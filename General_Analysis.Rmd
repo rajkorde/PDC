@@ -1,0 +1,205 @@
+---
+title: "Analysis of 2017 General Election votes"
+author: "Rajesh Korde"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+This documents analyzes the results of 2017 Primary Elections for Sammamish City Council. The data comes from [here](http://kingcounty.gov/depts/elections/results/2017/201711/reports.aspx.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE, fig.width=8, fig.height=6, echo=FALSE, 
+                      warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(leaflet)
+library(geojsonio)
+library(forcats)
+```
+
+```{r}
+precsp <- geojson_read("Data/Votes/json/wa.geojson", what = "sp")
+
+raw2017 <- read_csv("Data/Votes/2017General.csv")
+
+d <- raw2017
+
+d <- mutate(d, CounterType = as.factor(CounterType)) %>%
+  mutate(CounterType = fct_recode(CounterType,
+           "Rituja" = "Rituja Indapure",
+           "Chris" = "Chris Ross",
+           "KarenM" = "Karen Moran",
+           "KarenH" = "Karen N. Howe",
+           "Pam" = "Pam Stuart",
+           "John" = "John Robinson",
+           "Jason" = "Jason Ritchie",
+           "Mark" = "Mark Baughman",
+           "Voters" = "Registered Voters")) %>%
+  mutate(CounterType = fct_relevel(CounterType, "Rituja"))
+
+voter_count <- filter(d, CounterType == "Voters") %>%
+  group_by(Precinct) %>%
+  mutate(RN = row_number()) %>%
+  ungroup() %>%
+  filter(RN == 1) %>%
+  select(-RN)
+
+d <- filter(d, CounterType != "Voters") %>%
+  bind_rows(voter_count)
+```
+
+## Percent Vote count for Rituja
+
+The map below shows the vote percentage (votes/Registered voters) for Rituja in each of the precints. Green indicates high vote percentage, red indicates low. Hovering on a precint will show the actual vote count and percentage.
+
+```{r}
+x1 <- filter(d, CounterType == "Rituja") %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount)
+precs <- precsp[precsp$PRECNAME %in% x1$PRECNAME,]
+samm_precs <- x1$PRECNAME
+
+samm_voters <- filter(d, CounterType == "Voters") %>%
+  filter(Precinct %in% samm_precs) %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount)
+
+x1 <- bind_rows(samm_voters, x1) %>%
+  spread(key=CounterType, value=SumOfCount) %>%
+  mutate(VotePercent = (Rituja*100)/Voters)
+
+
+pal <- colorNumeric("RdYlGn", domain = x1$VotePercent)
+x2 <- sp::merge(x=precs, y=x1)
+
+leaflet(x2) %>%
+  addTiles() %>%
+  addPolygons(stroke = TRUE, weight = 1,
+              fillOpacity = 1,
+              fillColor = ~pal(VotePercent),
+              label = ~paste0(PRECNAME, " Vote Count: ", formatC(Rituja), " Vote Percent: ", formatC(VotePercent), "%"))
+
+```
+
+
+# Vote difference between Rituja and Chris
+
+The plot below shows the vote difference normalized by number of registered voters in that precinct. So a vote differnce of 0.02 (shown when you hover over a precinct) means 2% more voters of that precinct voted for Rituja
+
+
+```{r}
+x1 <- filter(d, CounterType %in% c("Rituja", "Chris")) %>%
+  filter(Precinct %in% samm_precs) %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount) %>%
+  bind_rows(samm_voters) %>%
+  spread(key=CounterType, value=SumOfCount) %>%
+  mutate(Diff = (Rituja - Chris)/Voters)
+
+x2 <- sp::merge(x=precs, y=x1)
+pal <- colorNumeric("RdYlGn", domain = x1$Diff)
+
+leaflet(x2) %>%
+  addTiles() %>%
+  addPolygons(stroke = TRUE, weight = 1,
+              fillOpacity = 1,
+              fillColor = ~pal(Diff),
+              label = ~paste0(PRECNAME, " Vote Difference: ", formatC(Diff)))
+```
+
+# Vote difference between Karen N Howe and Karen Moran
+
+The plot below shows the vote difference normalized by number of registered voters in that precinct. So a vote differnce of 0.02 (shown when you hover over a precinct) means 2% more voters of that precinct voted for Karen H Howe.
+
+
+```{r}
+x1 <- filter(d, CounterType %in% c("KarenH", "KarenM")) %>%
+  filter(Precinct %in% samm_precs) %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount) %>%
+  bind_rows(samm_voters) %>%
+  spread(key=CounterType, value=SumOfCount) %>%
+  mutate(Diff = (KarenH - KarenM)/Voters)
+
+x2 <- sp::merge(x=precs, y=x1)
+pal <- colorNumeric("RdYlGn", domain = x1$Diff)
+
+leaflet(x2) %>%
+  addTiles() %>%
+  addPolygons(stroke = TRUE, weight = 1,
+              fillOpacity = 1,
+              fillColor = ~pal(Diff),
+              label = ~paste0(PRECNAME, " Vote Difference: ", formatC(Diff)))
+```
+
+
+# Vote difference between Pam Stuart and John Robinson
+
+The plot below shows the vote difference normalized by number of registered voters in that precinct. So a vote differnce of 0.02 (shown when you hover over a precinct) means 2% more voters of that precinct voted for Pam.
+
+
+```{r}
+x1 <- filter(d, CounterType %in% c("Pam", "John")) %>%
+  filter(Precinct %in% samm_precs) %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount) %>%
+  bind_rows(samm_voters) %>%
+  spread(key=CounterType, value=SumOfCount) %>%
+  mutate(Diff = (Pam - John)/Voters)
+
+x2 <- sp::merge(x=precs, y=x1)
+pal <- colorNumeric("RdYlGn", domain = x1$Diff)
+
+leaflet(x2) %>%
+  addTiles() %>%
+  addPolygons(stroke = TRUE, weight = 1,
+              fillOpacity = 1,
+              fillColor = ~pal(Diff),
+              label = ~paste0(PRECNAME, " Vote Difference: ", formatC(Diff)))
+```
+
+
+# Vote difference between Mark Baughman and Jason Ritchie
+
+The plot below shows the vote difference normalized by number of registered voters in that precinct. So a vote differnce of 0.02 (shown when you hover over a precinct) means 2% more voters of that precinct voted for Mark.
+
+```{r}
+x1 <- filter(d, CounterType %in% c("Mark", "Jason")) %>%
+  filter(Precinct %in% samm_precs) %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount) %>%
+  bind_rows(samm_voters) %>%
+  spread(key=CounterType, value=SumOfCount) %>%
+  mutate(Diff = (Mark - Jason)/Voters)
+
+x2 <- sp::merge(x=precs, y=x1)
+pal <- colorNumeric("RdYlGn", domain = x1$Diff)
+
+leaflet(x2) %>%
+  addTiles() %>%
+  addPolygons(stroke = TRUE, weight = 1,
+              fillOpacity = 1,
+              fillColor = ~pal(Diff),
+              label = ~paste0(PRECNAME, " Vote Difference: ", formatC(Diff)))
+```
+
+
+# Table of votes for Rituja and Chris
+
+Given below is the table of votes for Rituja and Chris by each precinct.
+
+
+```{r}
+
+x1 <- filter(d, CounterType %in% c("Rituja", "Chris")) %>%
+  filter(Precinct %in% samm_precs) %>%
+  select(PRECNAME=Precinct, CounterType, SumOfCount) %>%
+  bind_rows(samm_voters) %>%
+  spread(key=CounterType, value=SumOfCount)
+
+library(kableExtra)
+library(knitr)
+
+kable(x1) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"))
+
+
+```
+

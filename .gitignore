@@ -1,0 +1,11 @@
+*.Rhistory
+*.html
+*.Rproj
+Data/
+General_Analysis_cache/
+Kim_Manka_2018_cache/
+PDC_Analysis_cache/
+Primary_Analysis_cache/
+Test_cache/
+PDC_Analysis_files/
+Primary_Analysis_files/

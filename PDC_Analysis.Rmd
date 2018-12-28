@@ -1,0 +1,176 @@
+---
+title: "Election contribution analysis from PDC data"
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+```{r}
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(leaflet)
+library(dplyr)
+library(knitr)
+
+options(scipen = 9999)
+options(tibble.width = Inf)
+theme_set(theme_bw())
+```
+
+```{r cache=TRUE}
+raw <- read_csv("Data/Contribs.csv")
+
+raw <- mutate(raw, receipt_date = mdy(receipt_date),
+              amount = as.numeric(gsub("$", "", amount, fixed = TRUE)))
+
+raw <- mutate(raw, contributor_city = if_else(contributor_city %in% 
+    c("SAMAMISH", "SAMAMMISH", "SAMMAM", "SAMMAMISH,", "SAMMMAMISH", "SAMMASH",
+    "SAMMAMAMISH", "SAMMAMASH", "SAMMAMICH", "SAMMAMIH", "SAMMAMISH", 
+    "SAMMAMISH WA", "SAMMAMISH", "SAMMAMISH, WA", "SAMMAMISHS", "SAMMAMIXH", 
+    "SAMMAMIZH", "SAMMAMMISH", "SAMMAMMMISH","SAMMAMSH", "SAMMAMSIH", 
+    "SAMMAMSISH", "SAMMANISH", "SAMMANMISH", "SAMMASH ", "SAMMIMISH", "SAMMISH", 
+    "SAMMMAMISH ", "SAMMMAMSIH", "SAMMMISH", "SAMMSMISH"), "SAMMAMISH", contributor_city))
+```
+
+All analysis is done based on data provided by PDC [here] (https://www.pdc.wa.gov/).
+
+##Donors who live in sammamish
+
+This section is for donors who live in Sammamish and have contributed to any elections (not just city council). The table below shows some summary statistics from all donations for all elections since 1998, where contributor_city was Sammamish.
+
+```{r}
+d <- filter(raw, election_year >= 1998, contributor_city == "SAMMAMISH")
+
+summary(d$amount)
+```
+
+The plot below shows the median donation amount for various offices. Looks like the most common donation amount is $100.
+
+```{r}
+
+filter(d, !is.na(office)) %>%
+  group_by(office) %>%
+  summarize(median = median(amount)) %>%
+  ggplot(aes(office, median)) + 
+  geom_bar(stat = "identity") + 
+  coord_flip() +
+  labs(x = "", y = "Median Donation amount",
+       title = "Donation amount by office")
+```
+
+
+The table below shows how often people have donated to elections.
+
+```{r}
+unique_loc <- group_by(d, contributor_name) %>%
+  summarise(contributor_location = first(contributor_location))
+
+loc <- group_by(d, contributor_name) %>%
+  summarize(Total = sum(amount), Frequency = n()) %>%
+  inner_join(unique_loc, by = "contributor_name") %>%  
+  separate(contributor_location, into = c("Lat", "Long"), sep = ",") %>%
+  mutate(Lat = as.numeric(gsub("(", "", Lat, fixed = TRUE)), 
+         Long = as.numeric(gsub(")", "", Long, fixed = TRUE)))
+
+summary(loc$Frequency)
+```
+
+Plot below shows the locations of all donors, total amount donated and how many times they have donated over the years. <span style="color:red">Red</span> marker is for those who have donated only once, <span style="color:blue">blue</span> is for those who have donated 2-5 times and <span style="color:green">green</span> is for those who have donated more than 5 times. You can zoom in and out on the map and click on the marker to get more information about the donor.
+
+```{r fig.height=8, fig.width=8}
+get_color_frequency <- function(freq) {
+  if_else(freq == 1, "red", 
+          if_else(freq > 1 & freq <= 5, "blue", "green"))
+}
+
+icons <- awesomeIcons(
+  icon = 'ion-social-usd',
+  iconColor = 'black',
+  library = 'ion',
+  markerColor = get_color_frequency(loc$Frequency)
+)
+
+
+leaflet(data = loc) %>% addTiles() %>%
+  addAwesomeMarkers(~Long, ~Lat, 
+                    popup = ~as.character(paste0(contributor_name, 
+                                                 "<br>$", Total,
+                                                 "<br>Donated ", Frequency,
+                                                 " times")),
+                    clusterOptions = markerClusterOptions(),
+                    icon = icons)
+
+```
+
+##Donations to Sammamish City Council elections
+This section is for donations to Sammamish city council election donors, regardless of their location. The table below shows the summary statistics for total donations from an individual.
+
+```{r}
+d1 = filter(raw, election_year >= 1998, jurisdiction == "CITY OF SAMMAMISH",
+            office == "CITY COUNCIL MEMBER")
+
+filers <- group_by(d1, filer_name) %>% summarize(Total = sum(amount)) 
+summary(filers$Total)
+```
+
+The plot below shows average money raised by the running candidates by year.
+```{r}
+group_by(d1, election_year, filer_name) %>%
+  summarize(Total = sum(amount)) %>%
+  group_by(election_year) %>%
+  summarize(Mean = mean(Total), Num = n()) %>%
+  arrange(election_year) %>%
+  ggplot(aes(as.factor(election_year), Mean)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = paste(Num, "candidates")), vjust = -1) +
+  labs(x = "", y = "Mean amount raised by each candidate", 
+       title = "Amount raised in City council elections")
+```
+
+Plot below shows the locations of all donors, total amount donated and how many times they have donated over the years. <span style="color:red">Red</span> marker is for those who have donated only once, <span style="color:blue">blue</span> is for those who have donated 2-5 times and <span style="color:green">green</span> is for those who have donated more than 5 times. You can zoom in and out on the map and click on the marker to get more information about the donor.
+
+
+```{r fig.height=10, fig.width=10}
+
+unique_loc <- group_by(d1, contributor_name) %>%
+  summarise(contributor_location = first(contributor_location))
+
+loc <- group_by(d1, contributor_name) %>%
+  summarize(Total = sum(amount), Frequency = n()) %>%
+  inner_join(unique_loc, by = "contributor_name") %>%  
+  separate(contributor_location, into = c("Lat", "Long"), sep = ",") %>%
+  mutate(Lat = as.numeric(gsub("(", "", Lat, fixed = TRUE)), 
+         Long = as.numeric(gsub(")", "", Long, fixed = TRUE)))
+
+icons <- awesomeIcons(
+  icon = 'ion-social-usd',
+  iconColor = 'white',
+  library = 'ion',
+  markerColor = get_color_frequency(loc$Frequency)
+)
+
+leaflet(data = loc) %>% addTiles() %>%
+  addAwesomeMarkers(~Long, ~Lat, 
+                    popup = ~as.character(paste0(contributor_name, 
+                                                 "<br>$", Total,
+                                                 "<br>Donated ", Frequency,
+                                                 " times")),
+                    icon = icons)
+
+```
+
+The table below shows the all the donors to sammamish city council elections over the years. NA probably means the donor chose not to disclose their names.
+
+```{r}
+donors <- arrange(d1, desc(election_year), desc(amount)) %>%
+  select(contributor_name, contributor_address, amount, election_year, filer_name)
+
+kable(donors)
+```
